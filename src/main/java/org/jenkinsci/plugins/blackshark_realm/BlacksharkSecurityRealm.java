@@ -6,6 +6,7 @@ import hudson.security.AbstractPasswordBasedSecurityRealm;
 import hudson.security.GroupDetails;
 import hudson.security.SecurityRealm;
 import hudson.tasks.Mailer;
+import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.NameValuePair;
@@ -21,6 +22,7 @@ import org.springframework.security.authentication.AuthenticationServiceExceptio
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
@@ -57,9 +59,8 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
             String userName = Base64.getEncoder().encodeToString(username.getBytes("utf-8"));
             String passWord = Base64.getEncoder().encodeToString(password.getBytes("utf-8"));
             Map paramMap = new HashMap();
-            paramMap.put("UserName", userName);
-            paramMap.put("Password", passWord);
-            paramMap.put("AppId", "21");
+            paramMap.put("username", userName);
+            paramMap.put("password", passWord);
 
             String url = joinParam(loginApi, paramMap);
             HttpGet httpGet = new HttpGet(url);
@@ -73,17 +74,25 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
                 throw new BadCredentialsException("request is null");
             }
 
-            boolean isMember = obj.getBoolean("IsMember");
-            String errMsg = obj.getString("ErrMsg");
-            JSONObject userInfo = obj.getJSONObject("UserInfo");
-
-            if (!isMember) {
-                throw new BadCredentialsException(errMsg);
+            int status = obj.getInt("status");
+            String msg = obj.getString("msg");
+            JSONObject data = obj.getJSONObject("data");
+            if (status != 0) {
+                throw new BadCredentialsException(msg);
             }
-
-            String displayName = userInfo.getString("CName");
+            boolean isMember = data.getBoolean("isMember");
+            if (!isMember) {
+                throw new BadCredentialsException(msg);
+            }
+            JSONObject userInfo = data.getJSONObject("userInfo");
+            String displayName = userInfo.getString("DisplayName");
             String email = userInfo.getString("Email");
+            JSONArray memberOf = userInfo.getJSONArray("MemberOf");
+
             List<GrantedAuthority> groups = loadGroups(username);
+            for (Object o : memberOf) {
+                groups.add(new SimpleGrantedAuthority(o.toString()));
+            }
             BlacksharkUserDetail user = new BlacksharkUserDetail(username, password, displayName, email, groups);
             updateUserDetails(user);
             return user;
