@@ -41,65 +41,98 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
 
     @DataBoundConstructor
     public BlacksharkSecurityRealm(String loginApi) {
-        this.loginApi = loginApi;
+        this.loginApi = StringUtils.trim(loginApi);
+    }
+
+
+    private UserInfo getUserInfo(String username, String password, boolean needpw) throws IOException {
+        Map paramMap = new HashMap();
+        if (StringUtils.isEmpty(password) && needpw) {
+            LOGGER.warning("password is empty");
+            throw new BadCredentialsException("password is null");
+        }
+
+        if (StringUtils.isEmpty(username)) {
+            LOGGER.warning("username is empty");
+            throw new BadCredentialsException("username is null");
+        }
+
+        if (StringUtils.contains(username, "@")) {
+            String[] split = StringUtils.split(username, "@");
+            username = split[0];
+        }
+        username = username.toLowerCase();
+        LOGGER.info("the new username is " + username);
+        String userName = Base64.getEncoder().encodeToString(username.getBytes("utf-8"));
+        paramMap.put("username", userName); //username 是必填参数
+
+        if (StringUtils.isEmpty(password) && !needpw) {
+            paramMap.put("checktype", "2");
+        } else {
+            String passWord = Base64.getEncoder().encodeToString(password.getBytes("utf-8"));
+            paramMap.put("password", passWord);
+        }
+
+        String url = joinParam(StringUtils.trim(loginApi), paramMap);
+        LOGGER.info("will send to this url: " + url);
+        HttpGet httpGet = new HttpGet(url);
+
+        CloseableHttpClient client = HttpClients.createDefault();
+        CloseableHttpResponse response = client.execute(httpGet);
+        String bodyAsString = EntityUtils.toString(response.getEntity());
+        JSONObject obj = JSONObject.fromObject(bodyAsString);
+
+        if (obj == null) {
+            LOGGER.warning("the request is null");
+            throw new BadCredentialsException("request is null");
+        }
+
+        int status = obj.getInt("status");
+        String msg = obj.getString("msg");
+        JSONObject data = obj.getJSONObject("data");
+        if (status != 0) {
+            LOGGER.warning("the request status is not 0");
+            throw new BadCredentialsException(msg);
+        }
+        boolean isMember = data.getBoolean("isMember");
+        if (!isMember) {
+            LOGGER.warning("the request isMember is not true");
+            throw new BadCredentialsException(msg);
+        }
+        JSONObject userInfo = data.getJSONObject("userInfo");
+        String displayName = userInfo.getString("DisplayName");
+        String email = userInfo.getString("Email");
+        JSONArray memberOf = userInfo.getJSONArray("MemberOf");
+
+        Set<String> member = new HashSet<>();
+        for (Object o : memberOf) {
+            member.add(o.toString());
+        }
+
+        List<GrantedAuthority> groups = loadGroups(username);
+        for (Object o : member) {
+            groups.add(new SimpleGrantedAuthority(o.toString()));
+        }
+
+        UserInfo userinfo = new UserInfo(email, displayName, member, groups);
+
+        return userinfo;
     }
 
     @Override
     protected UserDetails authenticate2(String username, String password) throws AuthenticationException {
         try {
-            if (StringUtils.isEmpty(username) || StringUtils.isEmpty(password)) {
-                throw new BadCredentialsException("username password is null");
-            }
-            if (StringUtils.contains(username, "@")) {
-                String[] split = StringUtils.split(username, "@");
-                username = split[0];
-            }
-            username = username.toLowerCase();
-
-            String userName = Base64.getEncoder().encodeToString(username.getBytes("utf-8"));
-            String passWord = Base64.getEncoder().encodeToString(password.getBytes("utf-8"));
-            Map paramMap = new HashMap();
-            paramMap.put("username", userName);
-            paramMap.put("password", passWord);
-
-            String url = joinParam(loginApi, paramMap);
-            HttpGet httpGet = new HttpGet(url);
-
-            CloseableHttpClient client = HttpClients.createDefault();
-            CloseableHttpResponse response = client.execute(httpGet);
-            String bodyAsString = EntityUtils.toString(response.getEntity());
-            JSONObject obj = JSONObject.fromObject(bodyAsString);
-
-            if (obj == null) {
-                throw new BadCredentialsException("request is null");
-            }
-
-            int status = obj.getInt("status");
-            String msg = obj.getString("msg");
-            JSONObject data = obj.getJSONObject("data");
-            if (status != 0) {
-                throw new BadCredentialsException(msg);
-            }
-            boolean isMember = data.getBoolean("isMember");
-            if (!isMember) {
-                throw new BadCredentialsException(msg);
-            }
-            JSONObject userInfo = data.getJSONObject("userInfo");
-            String displayName = userInfo.getString("DisplayName");
-            String email = userInfo.getString("Email");
-            JSONArray memberOf = userInfo.getJSONArray("MemberOf");
-
+            UserInfo userInfo = getUserInfo(username, password, true);
             List<GrantedAuthority> groups = loadGroups(username);
-            for (Object o : memberOf) {
-                groups.add(new SimpleGrantedAuthority(o.toString()));
-            }
-            BlacksharkUserDetail user = new BlacksharkUserDetail(username, password, displayName, email, groups);
+            groups.addAll(userInfo.groups);
+            BlacksharkUserDetail user = new BlacksharkUserDetail(username, password, userInfo.displayName, userInfo.mail, groups);
             updateUserDetails(user);
             return user;
         } catch (IOException e) {
             throw new AuthenticationServiceException("Failed", e);
         }
     }
+
 
     public void updateUserDetails(BlacksharkUserDetail d) {
         hudson.model.User u = hudson.model.User.getById(d.getUsername(), true);
@@ -117,14 +150,21 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
     protected List<GrantedAuthority> loadGroups(String username) throws AuthenticationException {
         List<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>();
         authorities.add(AUTHENTICATED_AUTHORITY2);
+        authorities.add(new SimpleGrantedAuthority(username));
         return authorities;
     }
 
     @Override
     public UserDetails loadUserByUsername2(String username) throws UsernameNotFoundException {
-        List<GrantedAuthority> groups = loadGroups(username);
-        BlacksharkUserDetail user = new BlacksharkUserDetail(username, "", username, username + "@blackshark.com", groups);
-        return user;
+        try {
+            UserInfo userInfo = getUserInfo(username, "", false);
+            List<GrantedAuthority> groups = loadGroups(username);
+            groups.addAll(userInfo.groups);
+            BlacksharkUserDetail user = new BlacksharkUserDetail(username, "password", userInfo.displayName, userInfo.mail, groups);
+            return user;
+        } catch (IOException e) {
+            throw new AuthenticationServiceException("Failed", e);
+        }
     }
 
     @Override
