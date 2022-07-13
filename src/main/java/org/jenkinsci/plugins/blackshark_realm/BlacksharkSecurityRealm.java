@@ -6,6 +6,7 @@ import hudson.security.AbstractPasswordBasedSecurityRealm;
 import hudson.security.GroupDetails;
 import hudson.security.SecurityRealm;
 import hudson.tasks.Mailer;
+import jenkins.security.LastGrantedAuthoritiesProperty;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
@@ -157,10 +158,26 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
     @Override
     public UserDetails loadUserByUsername2(String username) throws UsernameNotFoundException {
         try {
-            UserInfo userInfo = getUserInfo(username, "", false);
+            BlacksharkUserDetail user;
             List<GrantedAuthority> groups = loadGroups(username);
-            groups.addAll(userInfo.groups);
-            BlacksharkUserDetail user = new BlacksharkUserDetail(username, "password", userInfo.displayName, userInfo.mail, groups);
+            hudson.model.User u = hudson.model.User.getById(username, false);
+            if (u == null) {
+                UserInfo userInfo = getUserInfo(username, "", false);
+                groups.addAll(userInfo.groups);
+                user = new BlacksharkUserDetail(username, "", userInfo.displayName, userInfo.mail, groups);
+            } else {
+                Mailer.UserProperty mailerUserProperty = u.getProperty(Mailer.UserProperty.class);
+                String mail = username + "@blackshark.com";
+                if (mailerUserProperty != null) {
+                    mail = mailerUserProperty.getAddress();
+                }
+                LastGrantedAuthoritiesProperty lastGrantedAuthoritiesProperty = u.getProperty(LastGrantedAuthoritiesProperty.class);
+                if (lastGrantedAuthoritiesProperty != null) {
+                    Collection<? extends GrantedAuthority> authorities2 = lastGrantedAuthoritiesProperty.getAuthorities2();
+                    groups.addAll(authorities2);
+                }
+                user = new BlacksharkUserDetail(username, "", u.getDisplayName(), mail, groups);
+            }
             return user;
         } catch (IOException e) {
             throw new AuthenticationServiceException("Failed", e);
