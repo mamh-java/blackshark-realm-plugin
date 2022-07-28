@@ -95,6 +95,11 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
             LOGGER.warning("the request status is not 0");
             throw new BadCredentialsException(msg);
         }
+        if (data == null) {
+            LOGGER.warning("the data is null");
+            throw new BadCredentialsException("data is null");
+        }
+
         boolean isMember = data.getBoolean("isMember");
         if (!isMember) {
             LOGGER.warning("the request isMember is not true");
