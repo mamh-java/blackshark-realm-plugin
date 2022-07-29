@@ -81,6 +81,7 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
         CloseableHttpClient client = HttpClients.createDefault();
         CloseableHttpResponse response = client.execute(httpGet);
         String bodyAsString = EntityUtils.toString(response.getEntity());
+        LOGGER.info("bodyAsString: " + bodyAsString);
         JSONObject obj = JSONObject.fromObject(bodyAsString);
 
         if (obj == null) {
