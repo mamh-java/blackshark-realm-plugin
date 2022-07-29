@@ -186,7 +186,7 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
             }
             return user;
         } catch (Exception e) {
-            throw new AuthenticationServiceException("Failed", e);
+            throw new UsernameNotFoundException("Failed", e);
         }
     }
 
