@@ -185,7 +185,7 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
                 user = new BlacksharkUserDetail(username, "", u.getDisplayName(), mail, groups);
             }
             return user;
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new AuthenticationServiceException("Failed", e);
         }
     }
