@@ -12,8 +12,9 @@ import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
@@ -27,9 +28,14 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
+import javax.crypto.Cipher;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.interfaces.RSAPublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -38,8 +44,8 @@ import java.util.stream.Collectors;
 public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm {
     private static final Logger LOGGER = Logger.getLogger(BlacksharkSecurityRealm.class.getName());
 
-    private final String loginApi;
-    private final String publicKey;
+    public final String loginApi;
+    public final String publicKey;
 
     @DataBoundConstructor
     public BlacksharkSecurityRealm(String loginApi, String publicKey) {
@@ -66,22 +72,27 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
         }
         username = username.toLowerCase();
         LOGGER.info("the new username is " + username);
-        String userName = Base64.getEncoder().encodeToString(username.getBytes("utf-8"));
-        paramMap.put("username", userName); //username 是必填参数
 
         if (StringUtils.isEmpty(password) && !needpw) {
             paramMap.put("checktype", "2");
-        } else {
-            String passWord = Base64.getEncoder().encodeToString(password.getBytes("utf-8"));
-            paramMap.put("password", passWord);
         }
 
         String url = joinParam(StringUtils.trim(loginApi), paramMap);
         LOGGER.info("will send to this url: " + url);
-        HttpGet httpGet = new HttpGet(url);
+        HttpPost httpPost = new HttpPost(url);
 
+
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("userName", encrypt(username));
+        jsonObject.put("passWord", encrypt(password));
+
+
+        StringEntity entity = new StringEntity(jsonObject.toString(), "utf-8");
+        entity.setContentEncoding("UTF-8");
+        entity.setContentType("application/json");
+        httpPost.setEntity(entity);
         CloseableHttpClient client = HttpClients.createDefault();
-        CloseableHttpResponse response = client.execute(httpGet);
+        CloseableHttpResponse response = client.execute(httpPost);
         String bodyAsString = EntityUtils.toString(response.getEntity());
         LOGGER.info("bodyAsString: " + bodyAsString);
         JSONObject obj = JSONObject.fromObject(bodyAsString);
@@ -126,6 +137,27 @@ public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm 
         UserInfo userinfo = new UserInfo(email, displayName, member, groups);
 
         return userinfo;
+    }
+
+    private String encrypt(String inData) {
+        try {
+
+            String publicKeyPEM = publicKey
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replaceAll(System.lineSeparator(), "")
+                    .replace("-----END PUBLIC KEY-----", "");
+            byte[] publicKeyBytes = Base64.getDecoder().decode(publicKeyPEM);
+
+            RSAPublicKey publicKey = (RSAPublicKey) KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(publicKeyBytes));
+            Cipher cipher = Cipher.getInstance("RSA");
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+            String outData = Base64.getEncoder().encodeToString(cipher.doFinal(inData.getBytes(StandardCharsets.UTF_8)));
+            return outData;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
+        }
+
     }
 
     @Override
