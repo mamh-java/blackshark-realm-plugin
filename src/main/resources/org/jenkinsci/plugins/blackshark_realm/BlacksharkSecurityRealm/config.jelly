@@ -1,5 +1,9 @@
-<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
-  <f:entry title="${%Login API}">
-    <f:textbox field="loginApi" />
-  </f:entry>
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout"
+         xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+    <f:entry title="${%Login API}">
+        <f:textbox field="loginApi"/>
+    </f:entry>
+    <f:entry title="${%Public Key}">
+        <f:textarea field="publicKey"/>
+    </f:entry>
 </j:jelly>
