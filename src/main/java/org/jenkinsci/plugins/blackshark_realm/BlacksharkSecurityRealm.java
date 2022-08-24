@@ -38,11 +38,13 @@ import java.util.stream.Collectors;
 public class BlacksharkSecurityRealm extends AbstractPasswordBasedSecurityRealm {
     private static final Logger LOGGER = Logger.getLogger(BlacksharkSecurityRealm.class.getName());
 
-    public final String loginApi;
+    private final String loginApi;
+    private final String publicKey;
 
     @DataBoundConstructor
-    public BlacksharkSecurityRealm(String loginApi) {
+    public BlacksharkSecurityRealm(String loginApi, String publicKey) {
         this.loginApi = StringUtils.trim(loginApi);
+        this.publicKey = StringUtils.trim(publicKey);
     }
 
 
